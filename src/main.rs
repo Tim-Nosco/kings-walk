@@ -1,6 +1,11 @@
-#![allow(unused_mut, unused_variables, dead_code)]
+#![allow(dead_code)]
 
 use rand::Rng;
+use std::cell::RefCell;
+
+thread_local! {
+	static RNG: RefCell<rand::rngs::ThreadRng> = RefCell::new(rand::thread_rng());
+}
 
 // Holds the filled out game board which is a [1,n*n] permutation and
 // a vec of indicies which to the board that are mutable.
@@ -9,7 +14,6 @@ pub struct State {
 	board: Vec<u8>,
 	n: usize,
 	assignments: Vec<usize>,
-	rng: rand::rngs::ThreadRng,
 }
 
 impl State {
@@ -19,7 +23,6 @@ impl State {
 			board: board,
 			n: n,
 			assignments: Vec::new(),
-			rng: rand::thread_rng(),
 		};
 		// Identify the mutable positions of the board and determine
 		// what values are taken.
@@ -48,20 +51,25 @@ impl State {
 		state
 	}
 	// Swap assignments to create a new random start
-	fn random_start(&mut self) {
+	// returns the new score
+	fn random_start(&mut self) -> usize {
 		// Create a sequence of (idx1, idx2) so that idx1 can be
 		// swapped with idx2. idx1 will be the position in the array
 		// and idx2 will be the random value stored at that location.
-		let swaps: Vec<usize> = (1..self.assignments.len())
-			.rev()
-			.map(|x| self.rng.gen::<usize>() % x)
-			.collect();
+		let swaps: Vec<usize> = RNG.with(|rng_cell| {
+			let mut rng = rng_cell.borrow_mut();
+			(1..self.assignments.len())
+				.rev()
+				.map(|x| rng.gen::<usize>() % x)
+				.collect()
+		});
 		for (idx1, &idx2) in swaps.iter().enumerate() {
 			self.board.swap(
 				self.assignments[idx1],
 				self.assignments[idx2 + idx1],
 			);
 		}
+		self.score()
 	}
 	// Score the board in its current state
 	fn score(&self) -> usize {
@@ -120,6 +128,52 @@ impl State {
 	fn max_score(&self) -> usize {
 		self.board.len() - 1
 	}
+	// finds the best orbital and returns the new score
+	fn step(&mut self, start_score: usize) -> usize {
+		// initialize some variables to save the highest scoring
+		// orbital
+		let mut high_score = start_score;
+		let mut new_board = None;
+		// for every first index
+		for (prev, &idx1) in self.assignments.iter().enumerate() {
+			// and every possible other index
+			for &idx2 in &self.assignments[prev + 1..] {
+				// swap the two
+				self.board.swap(idx1, idx2);
+				// score the new state
+				let score = self.score();
+				// save if it's better than before
+				if score > high_score {
+					high_score = score;
+					new_board = Some((idx1, idx2));
+				};
+				// return the board to it's previous state
+				self.board.swap(idx1, idx2);
+			}
+		}
+		// update the board with the current best
+		if let Some((i, j)) = new_board {
+			self.board.swap(i, j);
+		}
+		high_score
+	}
+	fn hillclimb(&mut self) {
+		let mut high_score = self.score();
+		// While a solution hasn't been found
+		while high_score != self.max_score() {
+			// RESTART at a new point
+			high_score = self.random_start();
+			// Calculate the best orbital
+			let mut round = self.step(high_score);
+			// As long as progress is being made
+			while round > high_score {
+				// Update the highscore
+				high_score = round;
+				// and continue searching
+				round = self.step(high_score);
+			}
+		}
+	}
 }
 
 fn main() {}
@@ -130,12 +184,40 @@ mod tests {
 	use std::collections::HashSet;
 
 	#[test]
-	fn score_should_work2() {
+	fn hillclimb_should_work() {
 		// Make a new state
 		let mut state =
 			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
-		// ensure the board is properly setup
-		state.board = vec![3, 4, 1, 8, 2, 5, 9, 7, 6];
+		state.hillclimb();
+		// assert that the max score was reached
+		assert_eq!(state.score(), state.max_score());
+	}
+	#[test]
+	fn step_should_work() {
+		// Make a new state
+		let mut state =
+			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
+		// Ensure it initialized as expected
+		assert_eq!(vec![3, 4, 1, 5, 2, 6, 9, 7, 8], state.board);
+		// Calculate the starting score
+		let start_score = state.score();
+		// Find a better assignment
+		let end_score = state.step(start_score);
+		// Ensure it was better
+		assert!(start_score < end_score);
+		// See that the board is arranged as expected.
+		// 			start	end
+		// 			3 4 1	3 5 1
+		// 			5 2 6	4 2 6
+		//			9 7 8	9 7 8
+		// score:	7		6
+		assert_eq!(state.board, vec![3, 5, 1, 4, 2, 6, 9, 7, 8]);
+		assert_eq!(end_score, 7);
+	}
+	#[test]
+	fn score_should_work2() {
+		// Make a new state
+		let state = State::new(vec![3, 4, 1, 8, 2, 5, 9, 7, 6], 3);
 		// 3 4 1
 		// 8 2 5
 		// 9 7 6
@@ -168,7 +250,6 @@ mod tests {
 			assert!(*x > 0 && *x <= 9);
 			seen.insert(*x);
 		}
-		println!("{:?}", state);
 	}
 	#[test]
 	fn new_states_should_only_have_unique_values() {
