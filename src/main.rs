@@ -1,3 +1,4 @@
+#![feature(test)]
 #![allow(dead_code)]
 extern crate thiserror;
 use thiserror::Error;
@@ -206,10 +207,53 @@ fn main() {}
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	extern crate test;
+	use test::Bencher;
+
+	use rand::seq::IteratorRandom;
 	use std::collections::HashSet;
 
+	#[bench]
+	fn hillclimb_n_eq_8(b: &mut Bencher) {
+		// Create a large, solved board
+		#[rustfmt::skip]
+		let solved = vec![
+			08, 07, 06, 05, 04, 03, 02, 01,
+			09, 10, 11, 12, 13, 14, 15, 16,
+			24, 23, 22, 21, 20, 19, 18, 17,
+			25, 26, 27, 28, 29, 30, 31, 32,
+			40, 39, 38, 37, 36, 35, 34, 33,
+			41, 42, 43, 44, 45, 46, 47, 48,
+			56, 55, 54, 53, 52, 51, 50, 49,
+			57, 58, 59, 60, 61, 62, 63, 64,
+		];
+		b.iter(|| {
+			let mut working_board = solved.clone();
+			// randomly place zeros
+			RNG.with(|rng_cell| {
+				let mut rng = rng_cell.borrow_mut();
+				let min_corruption = 8 * 1;
+				let max_corruption = 8 * 2;
+				let corruption_amount = (rng.gen::<usize>()
+					% (max_corruption - min_corruption))
+					+ min_corruption;
+				for idx in (0..working_board.len())
+					.choose_multiple(&mut *rng, corruption_amount)
+				{
+					working_board[idx] = 0;
+				}
+			});
+			// Make a new state
+			let mut state = State::new(working_board, 8).unwrap();
+			// climb
+			state.hillclimb();
+			// assert that the max score was reached
+			assert_eq!(state.score(), state.max_score());
+		});
+	}
 	#[test]
-	fn hillclimb_test3() {
+	fn hillclimb_should_solve_n_eq_4_high_density() {
 		// Make a new state
 		let mut state = State::new(
 			vec![9, 8, 7, 6, 0, 3, 4, 0, 0, 0, 0, 0, 12, 0, 0, 0],
@@ -222,7 +266,7 @@ mod tests {
 		assert_eq!(state.score(), state.max_score());
 	}
 	#[test]
-	fn hillclimb_test2() {
+	fn hillclimb_should_solve_n_eq_4_low_density() {
 		// Make a new state
 		let mut state = State::new(
 			vec![0, 0, 0, 0, 0, 3, 4, 0, 0, 0, 0, 0, 12, 0, 0, 0],
@@ -235,7 +279,7 @@ mod tests {
 		assert_eq!(state.score(), state.max_score());
 	}
 	#[test]
-	fn hillclimb_test1() {
+	fn hillclimb_should_solve_n_eq_3() {
 		// Make a new state
 		let mut state =
 			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3).unwrap();
