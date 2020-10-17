@@ -1,8 +1,16 @@
 #![allow(dead_code)]
+extern crate thiserror;
+use thiserror::Error;
 
 use rand::Rng;
 use std::cell::RefCell;
 use std::fmt;
+
+#[derive(Error, Debug, PartialEq, Clone, Copy)]
+enum KingsWalkError {
+	#[error("The board length must be n*n.")]
+	BoardLength,
+}
 
 thread_local! {
 	static RNG: RefCell<rand::rngs::ThreadRng> = RefCell::new(rand::thread_rng());
@@ -10,7 +18,7 @@ thread_local! {
 
 // Holds the filled out game board which is a [1,n*n] permutation and
 // a vec of indicies which to the board that are mutable.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct State {
 	board: Vec<u8>,
 	n: usize,
@@ -29,7 +37,13 @@ impl fmt::Display for State {
 
 impl State {
 	// Create a new state object
-	fn new(board: Vec<u8>, n: usize) -> State {
+	fn new(
+		board: Vec<u8>,
+		n: usize,
+	) -> Result<State, KingsWalkError> {
+		if board.len() != n * n {
+			return Err(KingsWalkError::BoardLength);
+		}
 		let mut state = State {
 			board: board,
 			n: n,
@@ -59,7 +73,7 @@ impl State {
 			// Ensure to move to the next position.
 			next_unseen += 1;
 		}
-		state
+		Ok(state)
 	}
 	// Swap assignments to create a new random start
 	// returns the new score
@@ -195,20 +209,46 @@ mod tests {
 	use std::collections::HashSet;
 
 	#[test]
-	fn hillclimb_should_work() {
+	fn hillclimb_test3() {
 		// Make a new state
-		let mut state =
-			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
+		let mut state = State::new(
+			vec![9, 8, 7, 6, 0, 3, 4, 0, 0, 0, 0, 0, 12, 0, 0, 0],
+			4,
+		)
+		.unwrap();
+		// climb
 		state.hillclimb();
 		// assert that the max score was reached
 		assert_eq!(state.score(), state.max_score());
-		println!("{}", state);
+	}
+	#[test]
+	fn hillclimb_test2() {
+		// Make a new state
+		let mut state = State::new(
+			vec![0, 0, 0, 0, 0, 3, 4, 0, 0, 0, 0, 0, 12, 0, 0, 0],
+			4,
+		)
+		.unwrap();
+		// climb
+		state.hillclimb();
+		// assert that the max score was reached
+		assert_eq!(state.score(), state.max_score());
+	}
+	#[test]
+	fn hillclimb_test1() {
+		// Make a new state
+		let mut state =
+			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3).unwrap();
+		// climb
+		state.hillclimb();
+		// assert that the max score was reached
+		assert_eq!(state.score(), state.max_score());
 	}
 	#[test]
 	fn step_should_work() {
 		// Make a new state
 		let mut state =
-			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
+			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3).unwrap();
 		// Ensure it initialized as expected
 		assert_eq!(vec![3, 4, 1, 5, 2, 6, 9, 7, 8], state.board);
 		// Calculate the starting score
@@ -229,7 +269,8 @@ mod tests {
 	#[test]
 	fn score_should_work2() {
 		// Make a new state
-		let state = State::new(vec![3, 4, 1, 8, 2, 5, 9, 7, 6], 3);
+		let state =
+			State::new(vec![3, 4, 1, 8, 2, 5, 9, 7, 6], 3).unwrap();
 		// 3 4 1
 		// 8 2 5
 		// 9 7 6
@@ -239,7 +280,8 @@ mod tests {
 	#[test]
 	fn score_should_work1() {
 		// Make a new state
-		let state = State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
+		let state =
+			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3).unwrap();
 		// ensure the board is properly setup
 		assert_eq!(vec![3, 4, 1, 5, 2, 6, 9, 7, 8], state.board);
 		// 3 4 1	1-2-3-4-5 	score: 4
@@ -252,7 +294,7 @@ mod tests {
 	fn random_start_should_only_have_unique_values() {
 		// Make a new state
 		let mut state =
-			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
+			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3).unwrap();
 		// Randomize it
 		state.random_start();
 		// ensure each value is unique and in the range [1,n*n]
@@ -266,7 +308,8 @@ mod tests {
 	#[test]
 	fn new_states_should_only_have_unique_values() {
 		// Make a new state
-		let state = State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3);
+		let state =
+			State::new(vec![0, 0, 1, 0, 2, 0, 9, 0, 0], 3).unwrap();
 		// ensure the board is properly setup
 		assert_eq!(vec![3, 4, 1, 5, 2, 6, 9, 7, 8], state.board);
 	}
