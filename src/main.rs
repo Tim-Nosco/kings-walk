@@ -2,6 +2,7 @@
 
 use rand::Rng;
 use std::cell::RefCell;
+use std::fmt;
 
 thread_local! {
 	static RNG: RefCell<rand::rngs::ThreadRng> = RefCell::new(rand::thread_rng());
@@ -14,6 +15,16 @@ pub struct State {
 	board: Vec<u8>,
 	n: usize,
 	assignments: Vec<usize>,
+}
+
+// Pretty printing of the board
+impl fmt::Display for State {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		for line in self.board.as_slice().chunks(self.n) {
+			writeln!(f, "{:?}", line)?;
+		}
+		writeln!(f, "score: {}", self.score())
+	}
 }
 
 impl State {
@@ -191,6 +202,7 @@ mod tests {
 		state.hillclimb();
 		// assert that the max score was reached
 		assert_eq!(state.score(), state.max_score());
+		println!("{}", state);
 	}
 	#[test]
 	fn step_should_work() {
